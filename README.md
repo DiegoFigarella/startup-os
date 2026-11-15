@@ -45,6 +45,41 @@ cp .env.example .env                              # fill it in
 
 On first start, the bot backfills `BACKFILL_DAYS` (default 14) of history from every source.
 
+## Company Brain local MVP
+
+The Company Brain extension is a production-oriented ingestion boundary for the
+same Startup OS sources. It does not yet replace the Discord bot or automatically
+read QM conversations. It preserves source URLs, makes deliveries idempotent,
+and assigns every item to explicit allowed scopes so QM can later retrieve only
+the material a user is allowed to see.
+
+```mermaid
+flowchart LR
+  D[Discord gateway] --> I[Company Brain ingester]
+  G[Google Drive poller] --> I
+  Z[Zoom summary poller] --> I
+  E[Invoice mailbox poller] --> I
+  Q[Explicit QM decision writeback] --> I
+  I --> PG[(Postgres: items, cursors, scopes)]
+  PG --> API[Company Brain API]
+  API --> QM[QM tool]
+```
+
+Run the local, synthetic proof after Docker Desktop is running:
+
+```powershell
+Copy-Item .company-brain.env.example .company-brain.env
+docker compose --env-file .company-brain.env -f compose.company-brain.yaml up --build --detach
+.\scripts\company-brain-local-smoke.ps1
+```
+
+It writes one fake Discord item twice, verifies that the duplicate is ignored,
+and confirms the remaining item retains its source URL. Stop it with:
+
+```powershell
+docker compose --env-file .company-brain.env -f compose.company-brain.yaml down
+```
+
 ## Roadmap (from the Startup OS one-pager)
 
 - **Phase 1 (now):** ingest, `/catchup`. Next: the Sunday digest posted to `#digest`, which reuses `brain.catchup` on a weekly `tasks.loop`.

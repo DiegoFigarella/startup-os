@@ -1,4 +1,5 @@
 .env
+.company-brain.env
 *.db
 service-account*.json
 .venv/
