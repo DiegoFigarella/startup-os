@@ -1,5 +1,5 @@
 discord.py>=2.4
-anthropic>=1.12
+openai>=2.0
 google-api-python-client>=2.150
 google-auth>=2.35
 fastapi>=0.115

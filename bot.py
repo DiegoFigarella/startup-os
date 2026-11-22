@@ -16,6 +16,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 import brain
+import company_brain_client
 import db
 import sources
 
@@ -41,6 +42,7 @@ def save(msg):
     if text.strip():
         db.add("discord", str(msg.id), msg.created_at, msg.author.display_name,
                f"#{msg.channel.name}", text, msg.jump_url)
+        company_brain_client.ingest_discord(msg)
 
 
 async def backfill(guild):

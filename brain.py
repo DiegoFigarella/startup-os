@@ -1,7 +1,8 @@
 """Turns a window of items into a cited catch-up summary."""
+import os
 import re
 
-import anthropic
+from openai import AsyncOpenAI
 
 RANGES = {"1 day": 1, "3 days": 3, "1 week": 7, "2 weeks": 14, "1 month": 30}
 MAX_INPUT_CHARS = 600_000  # ~150k tokens; newest items win when a window is bigger
@@ -64,19 +65,14 @@ def chunks(text, limit=2000):
 
 async def catchup(items, reader, window):
     items, dropped = fit(items)
-    client = anthropic.AsyncAnthropic()
-    resp = await client.beta.messages.create(
-        model="claude-opus-5-5",
-        max_tokens=16000,
-        output_config={"effort": "medium"},
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",
-        system=SYSTEM,
-        messages=[{"role": "user", "content": f"Reader: {reader}\nWindow: last {window}\n\n{render(items)}"}],
+    client = AsyncOpenAI()
+    response = await client.responses.create(
+        model=os.getenv("OPENAI_MODEL", "gpt-6.2-astra"),
+        max_output_tokens=16000,
+        instructions=SYSTEM,
+        input=f"Reader: {reader}\nWindow: last {window}\n\n{render(items)}",
     )
-    if resp.stop_reason == "refusal":
-        return "Couldn't summarize this window. Try a shorter range."
-    text = link("".join(b.text for b in resp.content if b.type == "text"), items)
+    text = link(response.output_text, items)
     if dropped:
         text += f"\n-# Skipped {dropped} oldest items to fit. Try a shorter range for full detail."
     return text
