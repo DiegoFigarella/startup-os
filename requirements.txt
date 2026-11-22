@@ -3,6 +3,7 @@ openai>=2.0
 google-api-python-client>=2.150
 google-auth>=2.35
 google-auth-oauthlib>=1.2
+truststore>=0.10
 fastapi>=0.115
 psycopg[binary]>=3.2
 uvicorn>=0.30

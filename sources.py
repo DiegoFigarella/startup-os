@@ -12,12 +12,18 @@ from email.policy import default as email_policy
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
+import truststore
+
 import db
 import company_brain_client
 
 BACKFILL = timedelta(days=int(os.getenv("BACKFILL_DAYS", "14")))
 MAX_BODY = 3000  # ponytail: truncate long docs/emails; store diffs instead once Drive edits matter
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+# Use the operating system's trusted roots (including managed-network CAs) unless the operator supplied a CA bundle.
+if "REQUESTS_CA_BUNDLE" not in os.environ:
+    truststore.inject_into_ssl()
 
 
 def _cursor(source):
