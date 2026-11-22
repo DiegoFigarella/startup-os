@@ -39,7 +39,7 @@ cp .env.example .env                              # fill it in
 
 1. **Discord:** create an app at discord.com/developers. Under Bot, turn on the **Message Content** intent. Invite the bot with the `bot` and `applications.commands` scopes and the Read Messages and Read Message History permissions. Put the token and server ID in `.env`.
 2. **OpenAI:** set `OPENAI_API_KEY`. `OPENAI_MODEL` defaults to `gpt-6.2-astra`.
-3. **Google Drive:** enable the Drive API, create a Desktop OAuth client, and set `GOOGLE_OAUTH_CLIENT_FILE` to its downloaded JSON. On the first run, sign in through the browser; the local refresh token is saved at `GOOGLE_OAUTH_TOKEN_FILE`. Set `GOOGLE_DRIVE_FOLDER_ID` to the pilot folder's ID so the bot reads only its direct children. A service-account JSON remains a legacy fallback.
+3. **Google Drive:** enable the Drive API, create a Desktop OAuth client, and set `GOOGLE_OAUTH_CLIENT_FILE` to its downloaded JSON. On the first run, sign in through the browser; the local refresh token is saved at `GOOGLE_OAUTH_TOKEN_FILE`. Set `GOOGLE_DRIVE_FOLDER_ID` to the pilot folder's ID so the bot reads only its direct children. The first poll reads historical Drive content (up to `GOOGLE_DRIVE_BACKFILL_DAYS`, default 100 years, capped at 1970-01-01), then subsequent polls use their stored cursor. A service-account JSON remains a legacy fallback.
 4. **Zoom:** create a Server-to-Server OAuth app in the Zoom Marketplace with the meeting summary read scopes. AI Companion meeting summaries must be turned on for the account.
 5. **Invoices:** connect to any inbox over IMAP. For Gmail, use `imap.gmail.com` and an app password. `EMAIL_SEARCH` is an IMAP search filter.
 

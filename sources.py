@@ -30,6 +30,14 @@ def _cursor(source):
     return datetime.fromisoformat(db.latest(source) or db.iso(datetime.now(timezone.utc) - BACKFILL))
 
 
+def _drive_cursor():
+    latest = db.latest("drive")
+    if latest:
+        return datetime.fromisoformat(latest)
+    days = int(os.getenv("GOOGLE_DRIVE_BACKFILL_DAYS", "36500"))
+    return max(datetime.now(timezone.utc) - timedelta(days=days), datetime(1970, 1, 1, tzinfo=timezone.utc))
+
+
 def _http_json(url, headers, method="GET"):
     req = urllib.request.Request(url, headers=headers, method=method)
     with urllib.request.urlopen(req, timeout=30) as r:
@@ -68,30 +76,34 @@ def drive():
     from googleapiclient.discovery import build
 
     svc = build("drive", "v3", credentials=creds, cache_discovery=False)
-    after = _cursor("drive").strftime("%Y-%m-%dT%H:%M:%S")  # Drive reads naive RFC 3339 as UTC
-    # ponytail: first page only (200 files per 15 min poll); add nextPageToken loop if the drive gets busier
+    after = _drive_cursor().strftime("%Y-%m-%dT%H:%M:%S")  # Drive reads naive RFC 3339 as UTC
     folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
     query = f"modifiedTime > '{after}' and trashed = false"
     if folder:
         query += f" and '{folder}' in parents"
-    files = svc.files().list(
-        q=query,
-        corpora="allDrives", includeItemsFromAllDrives=True, supportsAllDrives=True,
-        orderBy="modifiedTime", pageSize=200,
-        fields="files(id,name,mimeType,modifiedTime,webViewLink,lastModifyingUser/displayName)",
-    ).execute().get("files", [])
-    for f in files:
-        text = f"Edited file: {f['name']}"
-        if f["mimeType"] == "application/vnd.google-apps.document":
-            body = svc.files().export(fileId=f["id"], mimeType="text/plain").execute().decode("utf-8", "ignore")
-            text += "\n" + body[:MAX_BODY]
-        db.add("drive", f"{f['id']}@{f['modifiedTime']}", f["modifiedTime"],
-               f.get("lastModifyingUser", {}).get("displayName"), f["name"], text, f.get("webViewLink"))
-        company_brain_client.ingest(
-            "drive", f["id"], f["modifiedTime"],
-            f.get("lastModifyingUser", {}).get("displayName"), f["name"], text,
-            f.get("webViewLink"), revision=f["modifiedTime"],
-        )
+    page_token = None
+    while True:
+        page = svc.files().list(
+            q=query, pageToken=page_token,
+            corpora="allDrives", includeItemsFromAllDrives=True, supportsAllDrives=True,
+            orderBy="modifiedTime", pageSize=200,
+            fields="nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink,lastModifyingUser/displayName)",
+        ).execute()
+        for f in page.get("files", []):
+            text = f"Edited file: {f['name']}"
+            if f["mimeType"] == "application/vnd.google-apps.document":
+                body = svc.files().export(fileId=f["id"], mimeType="text/plain").execute().decode("utf-8", "ignore")
+                text += "\n" + body[:MAX_BODY]
+            db.add("drive", f"{f['id']}@{f['modifiedTime']}", f["modifiedTime"],
+                   f.get("lastModifyingUser", {}).get("displayName"), f["name"], text, f.get("webViewLink"))
+            company_brain_client.ingest(
+                "drive", f["id"], f["modifiedTime"],
+                f.get("lastModifyingUser", {}).get("displayName"), f["name"], text,
+                f.get("webViewLink"), revision=f["modifiedTime"],
+            )
+        page_token = page.get("nextPageToken")
+        if not page_token:
+            break
 
 
 def zoom():

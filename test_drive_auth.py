@@ -24,3 +24,10 @@ def test_drive_oauth_uses_saved_token(monkeypatch, tmp_path) -> None:
 
     assert credentials.refresh_token == "refresh"
     assert credentials.scopes == sources.DRIVE_SCOPES
+
+
+def test_drive_backfill_defaults_to_historical(monkeypatch) -> None:
+    monkeypatch.setattr(sources.db, "latest", lambda source: None)
+    monkeypatch.delenv("GOOGLE_DRIVE_BACKFILL_DAYS", raising=False)
+
+    assert sources._drive_cursor() == sources.datetime(1970, 1, 1, tzinfo=sources.timezone.utc)
