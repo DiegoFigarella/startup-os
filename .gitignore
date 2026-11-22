@@ -2,5 +2,6 @@
 .company-brain.env
 *.db
 service-account*.json
+drive-token.json
 .venv/
 __pycache__/

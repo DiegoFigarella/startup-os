@@ -41,3 +41,29 @@ def test_discord_message_is_mirrored(monkeypatch) -> None:
         "author": "Maya", "place": "#partnerships", "text": "Sponsor confirmed.",
         "canonical_url": "https://discord.com/channels/1/2/123", "scopes": ["org:utmist-startups"],
     }
+
+
+def test_drive_revision_is_mirrored(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+
+    def open_request(request, timeout):
+        captured.update(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setenv("COMPANY_BRAIN_URL", "http://localhost:8088")
+    monkeypatch.setenv("COMPANY_BRAIN_API_KEY", "local-key")
+    monkeypatch.setenv("COMPANY_BRAIN_SCOPE", "org:utmist-startups")
+    monkeypatch.setattr(company_brain_client.urllib.request, "urlopen", open_request)
+
+    company_brain_client.ingest(
+        "drive", "file-123", "2026-11-22T12:00:00Z", "Maya", "Pilot notes",
+        "Edited file: Pilot notes", "https://docs.google.com/document/d/file-123", revision="2026-11-22T12:00:00Z",
+    )
+
+    assert captured["source"] == "drive"
+    assert captured["external_id"] == "file-123"
+    assert captured["revision"] == "2026-11-22T12:00:00Z"

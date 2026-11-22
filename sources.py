@@ -10,11 +10,14 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.policy import default as email_policy
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 import db
+import company_brain_client
 
 BACKFILL = timedelta(days=int(os.getenv("BACKFILL_DAYS", "14")))
 MAX_BODY = 3000  # ponytail: truncate long docs/emails; store diffs instead once Drive edits matter
+DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 
 def _cursor(source):
@@ -27,20 +30,46 @@ def _http_json(url, headers, method="GET"):
         return json.load(r)
 
 
-def drive():
+def _drive_credentials():
+    """Load user OAuth credentials, falling back to an existing service account."""
+    oauth_client = os.getenv("GOOGLE_OAUTH_CLIENT_FILE")
+    if oauth_client:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+
+        token_file = Path(os.getenv("GOOGLE_OAUTH_TOKEN_FILE", "drive-token.json"))
+        creds = Credentials.from_authorized_user_file(token_file, DRIVE_SCOPES) if token_file.exists() else None
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                creds = InstalledAppFlow.from_client_secrets_file(oauth_client, DRIVE_SCOPES).run_local_server(port=0)
+            token_file.write_text(creds.to_json())
+        return creds
+
     key_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
-    if not key_file:
+    if key_file:
+        from google.oauth2 import service_account
+        return service_account.Credentials.from_service_account_file(key_file, scopes=DRIVE_SCOPES)
+    return None
+
+
+def drive():
+    creds = _drive_credentials()
+    if not creds:
         return
-    from google.oauth2 import service_account
     from googleapiclient.discovery import build
 
-    creds = service_account.Credentials.from_service_account_file(
-        key_file, scopes=["https://www.googleapis.com/auth/drive.readonly"])
     svc = build("drive", "v3", credentials=creds, cache_discovery=False)
     after = _cursor("drive").strftime("%Y-%m-%dT%H:%M:%S")  # Drive reads naive RFC 3339 as UTC
     # ponytail: first page only (200 files per 15 min poll); add nextPageToken loop if the drive gets busier
+    folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+    query = f"modifiedTime > '{after}' and trashed = false"
+    if folder:
+        query += f" and '{folder}' in parents"
     files = svc.files().list(
-        q=f"modifiedTime > '{after}' and trashed = false",
+        q=query,
         corpora="allDrives", includeItemsFromAllDrives=True, supportsAllDrives=True,
         orderBy="modifiedTime", pageSize=200,
         fields="files(id,name,mimeType,modifiedTime,webViewLink,lastModifyingUser/displayName)",
@@ -52,6 +81,11 @@ def drive():
             text += "\n" + body[:MAX_BODY]
         db.add("drive", f"{f['id']}@{f['modifiedTime']}", f["modifiedTime"],
                f.get("lastModifyingUser", {}).get("displayName"), f["name"], text, f.get("webViewLink"))
+        company_brain_client.ingest(
+            "drive", f["id"], f["modifiedTime"],
+            f.get("lastModifyingUser", {}).get("displayName"), f["name"], text,
+            f.get("webViewLink"), revision=f["modifiedTime"],
+        )
 
 
 def zoom():
